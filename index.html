@@ -283,11 +283,16 @@ which is what lets you re-run it on a branch without generating noise in the dif
 <h3>Write tests as source, not as payloads</h3>
 <p>Tests are committed as YAML using block scalars, with the script bodies readable as actual
 indented lines.</p>
-<p>This is a formatting decision that determines whether the whole design works. The native export
-format of most API clients is JSON with scripts embedded as arrays of escaped strings. Committed
-to a repository, a generated test in that form produces a diff that no human will read, which
-means the human review step silently degrades into approval by assumption. Block scalars produce
-a diff where a reviewer sees the assertions as lines of code and can object to a specific one.</p>
+<p>This is a formatting decision that determines whether the whole design works. The format I was
+migrating from, and the one a large installed base still exports, is JSON with scripts embedded as
+arrays of escaped strings. Committed to a repository, a generated test in that form produces a diff
+that no human will read, which means the human review step silently degrades into approval by
+assumption. Block scalars produce a diff where a reviewer sees the assertions as lines of code and
+can object to a specific one.</p>
+<p>The scripts stay inside the collection rather than sitting in separate <code>.js</code> files, which would
+buy editor support and linting, because the runner executes a collection and expects them there.
+Splitting them would require a step that reassembles the collection before every run, and that
+step is somewhere the file a reviewer approved and the file that actually executed can diverge.</p>
 <p>An unreviewable generated test is not a reviewed test. The file format is what keeps a person in
 the loop.</p>
 <p>The agent writes only inside the collection's test tree, only on the PR branch. It holds no
@@ -494,6 +499,11 @@ what I built is Qodo's <code>qodo-cover</code> playbook. It classifies changed f
 builds a table of which ones need tests and why, runs a step headed "Decision gate", commits tests
 to a branch, and posts a table of what it skipped. If it decides no tests are needed, it says so.
 Anyone assessing this design should read that file first.</p>
+<p><strong>Deriving tests from the specification.</strong> Schemathesis and property-based API testing generate
+cases straight from an OpenAPI schema, with no model and no authored file, and the schema diff is
+the test diff. Where the contract is the whole requirement, that is the better tool and it costs
+less than this one. It does not reach rules the schema does not express. The precedence rule above
+is valid against every schema I could write for it, and still wrong.</p>
 <p><strong>Deciding that a change owes tests.</strong> This is test gap analysis and it is older than the AI
 framing. Teamscale has worked this way since 2016 and ships a pull request check that, in its own
 words, "fails if test gaps are detected". Sealights sells the same idea. The cheap version is a
@@ -513,12 +523,15 @@ code". My use of YAML block scalars is a reasonable implementation decision. It 
 one.</p>
 <p>Set all of that aside. Three things are left.</p>
 <ol>
-<li><strong>The guard decides before any test exists.</strong> Everything above answers "is this change tested"
-   by running a suite and measuring what it touched. That needs tests to already exist and a run
-   to have happened. Mine answers "does this change owe tests" statically, from the contract
-   surface and a two-hop walk from the handlers, with no instrumentation and no existing corpus.
-   It has to, because its output is an instruction to an author, and you cannot measure the
-   coverage of a test nobody has written yet.</li>
+<li><strong>The guard decides before any test exists, and without coverage.</strong> Everything above answers
+   "is this change tested" by measuring which lines a test run touched. That needs instrumentation
+   of the code under test, a runner in the same process, and a coverage report. An API test has
+   none of those. It makes an HTTP request to a server running somewhere else, so no coverage
+   artifact exists to say whether a collection exercised the branch I just changed. Reasoning
+   statically was not a preference over coverage. It was the only signal available, which is also
+   why it is an approximation and why it is biased toward firing. The guard answers "does this
+   change owe tests" from the contract surface and a two-hop walk from the handlers, before there
+   is any test to measure.</li>
 <li><strong>The receipt is a commit.</strong> Qodo explains itself in a pull request comment. A comment can be
    deleted, buried in a thread, or never posted at all if the job dies before it gets there, and
    nothing downstream depends on it existing. Mine is a commit, and the required check is watching
