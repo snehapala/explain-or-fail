@@ -482,31 +482,56 @@ finding. The cost question is not interesting. The review capacity question is.<
 <p>Publish your inputs next to your outputs and let readers substitute their own.</p>
 <hr />
 <h2>Prior art, and what is new here</h2>
-<p>Several pieces of this exist separately and it is worth being precise about which.</p>
-<p>Automated test generation from source is well established, from traditional tools through to
-LLM-based work such as Meta's TestGen-LLM. Generating tests on a pull request is a product
-category, including Qodo and similar. Deciding which tests a change implies is test impact
-analysis, which has existed for years. Keeping API collections in version control and running them
-from CI is standard practice supported by the major API clients directly.</p>
-<p>What I have not seen combined is this:</p>
+<p>Most of this exists somewhere. It is worth naming where, precisely, because a vague prior-art
+section is worth less than none.</p>
+<p><strong>Generating tests with a model.</strong> Meta's TestGen-LLM improves existing human-written test classes
+and keeps only candidates that build, pass reliably, and raise coverage. It was deployed as a sweep
+over classes it was pointed at rather than against a diff, and a run that yields nothing yields
+nothing: no artifact, no record. Meta's later mutation-guided work targets specific fault classes
+instead of coverage.</p>
+<p><strong>Generating tests on a pull request.</strong> This is a product category. The closest published thing to
+what I built is Qodo's <code>qodo-cover</code> playbook. It classifies changed files as logic-bearing or not,
+builds a table of which ones need tests and why, runs a step headed "Decision gate", commits tests
+to a branch, and posts a table of what it skipped. If it decides no tests are needed, it says so.
+Anyone assessing this design should read that file first.</p>
+<p><strong>Deciding that a change owes tests.</strong> This is test gap analysis and it is older than the AI
+framing. Teamscale has worked this way since 2016 and ships a pull request check that, in its own
+words, "fails if test gaps are detected". Sealights sells the same idea. The cheap version is a
+diff-coverage gate: Codecov's patch status measures only the lines a pull request touched, and set
+high enough it fails the check. Deliberate over-selection is normal here too, rather than a
+differentiator. Azure DevOps test impact analysis falls back to running every test when it meets a
+file it cannot reason about, which its documentation calls "good from a safety perspective", and
+that is the same reason I bias the guard toward firing.</p>
+<p><strong>Refusing a change at the pipeline.</strong> Pact's <code>can-i-deploy</code> exits non-zero until every consumer
+and provider pair is verified for the target environment. That pattern is mature and predates all
+of this.</p>
+<p><strong>Keeping API tests in version control in a readable format.</strong> Standard, and more standard than
+when I started. Bruno, Hurl, Step CI and Tavern are plain text by design, and Postman's 3.0.0
+collection schema is multiple YAML files on disk, introduced so that "humans, AI agents, and
+automation tools can read, diff, review, and safely change collections in the same way as source
+code". My use of YAML block scalars is a reasonable implementation decision. It is not an original
+one.</p>
+<p>Set all of that aside. Three things are left.</p>
 <ol>
-<li><strong>A guard that decides whether a change owes tests at all</strong>, using reachability rather than
-   only contract diffing, and biased toward firing</li>
-<li><strong>An explain-or-fail commit contract</strong>, where the absence of output is structurally impossible,
-   so a gate cannot pass through silence</li>
-<li><strong>Generated tests committed in a reviewable source format</strong>, chosen specifically so that the
-   human review step cannot quietly degrade</li>
-<li><strong>Authoring from the story and not only the diff</strong>, which is what catches rules that exist in
-   acceptance criteria and nowhere else</li>
-<li><strong>A coverage handoff artifact</strong>, the workbook column that tells a human which cases are still
-   theirs</li>
+<li><strong>The guard decides before any test exists.</strong> Everything above answers "is this change tested"
+   by running a suite and measuring what it touched. That needs tests to already exist and a run
+   to have happened. Mine answers "does this change owe tests" statically, from the contract
+   surface and a two-hop walk from the handlers, with no instrumentation and no existing corpus.
+   It has to, because its output is an instruction to an author, and you cannot measure the
+   coverage of a test nobody has written yet.</li>
+<li><strong>The receipt is a commit.</strong> Qodo explains itself in a pull request comment. A comment can be
+   deleted, buried in a thread, or never posted at all if the job dies before it gets there, and
+   nothing downstream depends on it existing. Mine is a commit, and the required check is watching
+   for that commit. The explanation and the permission to merge are the same object.</li>
+<li><strong>The handoff is an artifact somebody is given.</strong> A workbook, a row per scenario, marking what
+   is automated and what is still a person's, attached to the story on merge rather than left in
+   a thread.</li>
 </ol>
-<p>The second of those is the one I would defend, and it is worth being precise about what I am
-claiming. The underlying principle, that an automated decision should be observable including when
-the decision is to do nothing, is older than any of this and is not mine. What is mine is its
-application here: a test-authoring step that cannot terminate without leaving a reviewable artifact
-on the branch, so that "no tests were needed" becomes a statement a reviewer can disagree with
-rather than an absence nobody notices.</p>
+<p>The second is the one I would defend. The underlying principle, that an automated decision should
+be observable including when the decision is to do nothing, is older than any of this and is not
+mine. The usual implementation is a log line or a comment, and both are advisory. Making the
+observable thing be the same artifact the gate depends on is what turns "no tests were needed"
+from a note into a statement a reviewer can disagree with rather than an absence nobody notices.</p>
 <p>That is the part I would defend, and it is not an AI idea. It is a gate design idea, and it
 applies to any automated step that is allowed to decide it has nothing to do.</p>
 <hr />
