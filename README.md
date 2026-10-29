@@ -6,7 +6,7 @@ An architecture article by Sneha Pala.
 
 Read it: **https://snehapala.github.io/explain-or-fail/**
 
-Archived copy of record: **https://doi.org/10.5281/zenodo.23777508**
+Archived copy of record: **https://doi.org/10.5281/zenodo.23777507**
 
 A pipeline gate that decides whether a code change owes API tests, an agent that
 writes them into the pull request while it is still open, and a commit contract
