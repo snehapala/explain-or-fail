@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explain or Fail &middot; Sneha Pala</title>
+<meta name="description" content="A pipeline gate that decides whether a code change owes API tests, an agent that writes them into the pull request while it is still open, and a commit contract that makes silence impossible.">
+<meta name="author" content="Sneha Pala">
+<link rel="canonical" href="https://snehapala.github.io/explain-or-fail/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Explain or Fail">
+<meta property="og:description" content="A pipeline gate that decides whether a code change owes API tests, an agent that writes them into the pull request while it is still open, and a commit contract that makes silence impossible.">
+<meta name="twitter:card" content="summary">
+<style>
+:root {
+  --ink: #16161a; --quiet: #5c5c66; --rule: #e0e0dc;
+  --bg: #fdfdfc; --accent: #2f6fb0; --code-bg: #f4f4f1;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8e8e4; --quiet: #a0a09a; --rule: #34343a;
+    --bg: #17171a; --accent: #7fb0e0; --code-bg: #212126;
+  }
+  .diagram img { filter: invert(0.92) hue-rotate(180deg); }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; padding: 0 1.5rem 6rem;
+  background: var(--bg); color: var(--ink);
+  font: 17px/1.65 Charter, Georgia, 'Times New Roman', serif;
+}
+.wrap { max-width: 42rem; margin: 0 auto; }
+header { padding: 4.5rem 0 0; }
+h1 {
+  font-size: 2.45rem; line-height: 1.1; margin: 0 0 .4rem;
+  letter-spacing: -.02em; font-weight: 600;
+}
+.standfirst {
+  font-size: 1.2rem; color: var(--quiet); font-style: italic;
+  margin: 0 0 1.2rem; line-height: 1.4;
+}
+.byline {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  font-size: .85rem; color: var(--quiet); margin: 0 0 2.5rem;
+  padding-bottom: 2.5rem; border-bottom: 1px solid var(--rule);
+}
+.byline a { color: var(--quiet); }
+h2 {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  font-size: 1.35rem; font-weight: 600; letter-spacing: -.01em;
+  margin: 3rem 0 .8rem;
+}
+h3 {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  font-size: 1.05rem; font-weight: 600; margin: 2rem 0 .6rem;
+}
+p { margin: 0 0 1.1rem; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+ul, ol { margin: 0 0 1.2rem; padding-left: 1.3rem; }
+li { margin-bottom: .45rem; }
+strong { font-weight: 600; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.8rem 0; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .85em; background: var(--code-bg);
+  padding: .1em .35em; border-radius: 3px;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--rule); border-radius: 5px;
+  padding: .9rem 1.1rem; overflow-x: auto; font-size: .88rem; line-height: 1.5;
+}
+pre code { background: none; padding: 0; font-size: .95em; }
+table {
+  width: 100%; border-collapse: collapse; margin: 0 0 1.5rem;
+  font-size: .92rem; display: block; overflow-x: auto;
+}
+th, td {
+  border: 1px solid var(--rule); padding: .5rem .7rem;
+  text-align: left; vertical-align: top;
+}
+th {
+  background: var(--code-bg); font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  font-size: .85rem;
+}
+.diagram { margin: 2rem 0 2.2rem; }
+.diagram img { width: 100%; height: auto; display: block; }
+.diagram figcaption {
+  font-size: .85rem; color: var(--quiet); margin-top: .7rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  line-height: 1.5;
+}
+footer {
+  margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid var(--rule);
+  font-size: .9rem; color: var(--quiet);
+}
+footer p { margin-bottom: .7rem; }
+@media (max-width: 34rem) {
+  body { font-size: 16px; padding: 0 1.1rem 4rem; }
+  header { padding-top: 2.5rem; }
+  h1 { font-size: 1.9rem; }
+  .standfirst { font-size: 1.05rem; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Explain or Fail</h1>
+  <p class="standfirst">A merge gate for AI-authored API tests</p>
+  <p class="byline">Sneha Pala &middot; 29 October 2026 &middot; <a href="https://doi.org/10.5281/zenodo.23777508">doi.org/10.5281/zenodo.23777508</a></p>
+</header>
+<main>
+<p>API tests are almost always written after the code they test. The gap is not a tooling problem and
+it is not a discipline problem. It is an ordering problem. This is a design for closing it: a
+pipeline gate that decides whether a change owes tests, an agent that writes them into the pull
+request while it is still open, and a commit contract that makes silence impossible.</p>
+<p>The design has been implemented and run in production on a .NET API estate. This article describes
+the pattern, not that deployment.</p>
+<hr />
+<h2>The problem is ordering, not effort</h2>
+<p>The conventional sequence is: a developer changes an endpoint, the change is reviewed, it merges,
+it deploys, and some time later a QA engineer opens the diff, works out what changed, and writes
+tests for it.</p>
+<p>Every expensive property of that sequence follows from its order.</p>
+<p>The QA engineer has to reverse-engineer intent from a diff that has already shipped, which is the
+hardest possible moment to establish what the change was supposed to do. The author has moved on.
+The acceptance criteria have scrolled out of view. And because the tests are not blocking
+anything, they are the first thing dropped when the next sprint starts, so the work is not merely
+late, it is optional. A test suite that is optional and retrospective converges on being a
+regression archive for bugs that already escaped.</p>
+<p>The fix is not to ask people to try harder. It is to move test authoring to the only point in the
+cycle where the intent, the diff, and a blocking review all exist at the same time: while the pull
+request is open.</p>
+<hr />
+<h2>Shape of the design</h2>
+<p>Three phases, each owned by a different actor.</p>
+<figure class="diagram">
+  <img src="diagram.svg" alt="Three phases on a horizontal axis. The agent writes only to the branch; the pipeline holds every credential.">
+  <figcaption>The agent only ever writes files to a branch. The pipeline holds every credential and performs every privileged action.</figcaption>
+</figure>
+<p><strong>While the PR is open.</strong> A guard step decides whether the change owes tests. If it does, an agent
+is invoked. The agent reads the diff, the linked story, and the existing test conventions, then
+commits test scripts to the PR branch. A required status check holds the merge until they are
+there.</p>
+<p><strong>On merge.</strong> The pipeline publishes the test collection to the API client's cloud workspace,
+generates a test case workbook, and attaches it to the linked story.</p>
+<p><strong>On deploy.</strong> The tests run against the deployed API at every environment promotion. A failure
+blocks the promotion.</p>
+<p>The ownership split matters. The agent only ever writes files to a branch. The pipeline holds
+every credential and performs every privileged action. Humans make every judgement about whether
+the tests are any good.</p>
+<hr />
+<h2>Part 1: The guard</h2>
+<p>The guard answers one question: does this change owe tests?</p>
+<p>Getting this wrong in one direction is cheap and in the other direction is expensive. A false
+positive costs one agent invocation that concludes nothing was needed. A false negative means
+behaviour ships with no test and nobody is told. So the guard is deliberately biased toward
+firing.</p>
+<p>It works on two independent signals, and either one is sufficient.</p>
+<p><strong>Signal one: contract surface.</strong> Diff the PR against its target branch, restricted to source
+files and excluding test projects. Look for changes to route definitions, handler signatures,
+request and response shapes, validators, and status codes. This catches the obvious cases.</p>
+<p><strong>Signal two: reachability.</strong> Contract diffing alone misses the change that alters what an
+endpoint does without altering how it is called. So the guard also walks outward from handler
+definitions and marks a change as relevant if it lands within two hops: the service class a
+handler calls, a DTO, a validator, a mapper, a repository, a type from an internal shared library,
+or an options or settings type that a handler reads.</p>
+<p>Two hops is a tuning decision, not a principle. One hop misses too much in a layered codebase.
+Three hops in a well-factored service tends to reach shared utility code, at which point every
+change fires the guard and the signal is gone.</p>
+<p>Reachability is a practical approximation and not a proof of impact. How well it works depends on
+how plainly the codebase expresses its dependencies. Dependency injection, dynamic dispatch,
+reflection and generated code all produce edges that a static walk will not see, and in a codebase
+that leans on them the graph is incomplete by construction. The guard is built to reduce silent
+omissions, not to establish that every affected endpoint has been found. Treat a change it misses
+as expected behaviour rather than as a bug in the analysis, and keep the bias toward firing, which
+is what buys back some of what the graph cannot see.</p>
+<p>Each detected change then gets a category, and only two of them produce work:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Meaning</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Added</td>
+<td>New endpoint or new field on the contract</td>
+<td>Author tests</td>
+</tr>
+<tr>
+<td>Modified</td>
+<td>Existing contract changed</td>
+<td>Author or amend tests</td>
+</tr>
+<tr>
+<td>Behaviour</td>
+<td>Logic changed, contract did not</td>
+<td>Conditional, see below</td>
+</tr>
+<tr>
+<td>Removed</td>
+<td>Endpoint or field deleted</td>
+<td>Retire tests, do not author</td>
+</tr>
+<tr>
+<td>Unchanged</td>
+<td>Reached but semantically irrelevant</td>
+<td>Skip</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The behaviour rule is the one worth copying.</strong> A logic change that does not touch the route,
+the body, the validators or the status code only earns a test if the new rule is observable in an
+HTTP response. If it is not observable, no test is written, and the run says so. The alternative
+is an agent inventing assertions about internal state it cannot see, which produces tests that
+pass for the wrong reason. Those are worse than no tests, because they consume review attention
+and then lie.</p>
+<p><strong>When the two signals disagree, reachability wins.</strong> Contract diffing says no and reachability
+says yes, the agent runs. These are two separate decisions made by two separate pieces of logic,
+and they can drift apart as the codebase changes. Resolving the tie toward running is what keeps
+drift from turning into silent gaps. It is worth being explicit that this drift is a standing
+design weakness rather than pretending the two signals are one.</p>
+<hr />
+<h2>Part 2: The agent</h2>
+<p>Once invoked, the agent reads four things.</p>
+<p><strong>The diff</strong>, for what changed. <strong>The linked story</strong>, found from the ticket key in the branch
+name, for what the change was supposed to do. <strong>The surrounding source</strong>, for the handler, its
+validators, its auth requirements and its data access. <strong>The existing test collection</strong>, for
+conventions it must match rather than invent.</p>
+<p>Reading the story and not just the diff is the single highest-value decision in the design.
+Validation rules routinely exist only in acceptance criteria. A priority ordering, a tie-break
+rule, a threshold: these are stated in the ticket, implemented as a few lines of unremarkable
+code, and invisible to anything working from the diff alone. An agent that reads only the diff
+writes tests for the shape of the change. An agent that reads the story writes tests for the rule.</p>
+<p>The case that made this concrete was a deduplication rule. The same record arrived from several
+upstream sources, and which source won was stated in the acceptance criteria and nowhere else. In
+the code it was a sort order: a few lines that read as an implementation detail and are in fact
+the entire business rule. A diff shows you the sort. Only the story tells you it is a precedence
+rule, and that getting it backwards means the wrong source wins silently.</p>
+<p>The agent then makes nine decisions per endpoint. Each is read out of the code rather than
+templated, and getting any of them wrong produces a suite that fails for reasons that have nothing
+to do with the API.</p>
+<p>They group by what the decision governs: whether an endpoint is tested at all, what the request
+looks like, and how it lands in a suite that already exists.</p>
+<h3>Scope: whether it is tested at all</h3>
+<p><strong>1. Not everything is testable over HTTP.</strong> Timer, queue, event and orchestration triggers get no
+request at all. An endpoint that accepts work asynchronously gets the 202-plus-status-URL polling
+pattern, rather than a 200 that will never happen.</p>
+<p><strong>2. The production suite stays safe.</strong> Only reads that pass against always-present production data
+go into the production suite. Reads depending on seeded data are left out, and the reason is stated
+in the run report. Writes never go there at all.</p>
+<h3>Shape: what the request looks like</h3>
+<p><strong>3. Auth follows the architecture.</strong> A bearer token, a function key header, or a signed-request
+scheme, picked from the attributes on the endpoint and inherited at folder level wherever the
+collection already does it that way.</p>
+<p><strong>4. Validators become negative tests.</strong> Declarative validation rules turn into missing-field and
+invalid-input cases that assert the real message. Where the message cannot be proven from the code,
+the test asserts the status and flags a TODO rather than guessing.</p>
+<p><strong>5. Write endpoints bring their own data.</strong> Create, capture the id, act on it, delete it. It reuses
+the collection's existing create and delete requests, so the suite stays runnable end to end instead
+of depending on a record somebody made last month.</p>
+<h3>Fit: how it lands in a suite that already exists</h3>
+<p><strong>6. Execution order is a correctness problem.</strong> A new request goes before the folder's teardown, at
+the midpoint of the gap, and existing requests are never renumbered. Appended at the end it would
+run after the cleanup, against data that has just been deleted.</p>
+<p><strong>7. Variables are reused, never reinvented.</strong> Exact name and casing taken from the request,
+environment and collection variables that already exist. A second alias for a value the collection
+already holds is a defect, not a style choice.</p>
+<p><strong>8. Running it twice changes nothing.</strong> Endpoints the change did not touch stay byte-identical, so
+a second run on the same branch produces an empty diff. Endpoints it deleted have their test files
+removed and their emptied folders pruned.</p>
+<p><strong>9. Reviewable YAML, not escaped JSON.</strong> Below, because it is the decision that determines whether
+any of the other eight can be reviewed at all.</p>
+<p>Two of these are worth lifting out. Decision 4 is the same instinct as the commit contract: where
+the agent cannot prove the expected message from the source, it marks the uncertainty in the test
+rather than inventing an assertion that looks authoritative. Decision 8 makes the step idempotent,
+which is what lets you re-run it on a branch without generating noise in the diff.</p>
+<h3>Write tests as source, not as payloads</h3>
+<p>Tests are committed as YAML using block scalars, with the script bodies readable as actual
+indented lines.</p>
+<p>This is a formatting decision that determines whether the whole design works. The native export
+format of most API clients is JSON with scripts embedded as arrays of escaped strings. Committed
+to a repository, a generated test in that form produces a diff that no human will read, which
+means the human review step silently degrades into approval by assumption. Block scalars produce
+a diff where a reviewer sees the assertions as lines of code and can object to a specific one.</p>
+<p>An unreviewable generated test is not a reviewed test. The file format is what keeps a person in
+the loop.</p>
+<p>The agent writes only inside the collection's test tree, only on the PR branch. It holds no
+credentials and performs no network action against any environment. It does not run the tests it
+writes.</p>
+<hr />
+<h2>Part 3: The commit contract</h2>
+<p>This is the core of the design and it is one rule.</p>
+<p><strong>A valid run always commits. Either the tests, or an empty commit whose message states why no
+tests were needed.</strong></p>
+<p>The required status check stays red until a commit from the agent lands at the branch tip. The
+design contains no path where nothing happens and the gate opens anyway.</p>
+<p>The reason this matters is that every automated gate has a failure mode where absence is read as
+success. A step that posts a result when it has something to say and stays quiet otherwise cannot
+be distinguished from a step that is broken, misconfigured, not triggered, or silently erroring.
+Quiet is ambiguous, and ambiguity in a gate resolves toward merging.</p>
+<p>Requiring an artifact in every case removes the ambiguity. If the agent thought about the change
+and concluded it owed nothing, that conclusion is a sentence in a commit message, visible in the
+PR, attributable, and reviewable. A reviewer can read "no tests added: the modified code path is
+not reachable from any endpoint" and disagree with it. That is a conversation. Silence is not a
+conversation.</p>
+<p>It also converts the drift problem from Part 1 into something observable. If the guard fires and
+the agent then concludes nothing was needed, that pair of decisions contradicts itself and the
+contradiction is written down in the log. A disagreement you can count is a disagreement you can
+fix.</p>
+<h3>Why a commit specifically</h3>
+<p>The contract is that every qualifying run leaves a reviewable artifact. A commit is how I chose to
+carry it, and that is an implementation decision rather than the principle.</p>
+<p>It earns its place for four reasons. The artifact appears where the reviewer already is, on the
+branch, in the diff, rather than in a build log nobody opens. It is attributable and timestamped
+without building anything to make it so. It is durable, surviving pipeline retention windows that
+build artifacts do not. And it plugs into the required-check model already enforcing the merge, so
+the gate needs no new concept to express "has the agent spoken yet".</p>
+<p>A machine-readable decision record posted as a check annotation or a PR comment would satisfy the
+same contract. If you build this and your review culture lives somewhere other than the diff, use
+that instead. What must not change is that the run cannot end without saying something.</p>
+<h3>When the agent itself goes silent</h3>
+<p>A design claiming silence is impossible has to say what happens when the thing that was supposed
+to speak does not.</p>
+<p>Model timeout, a failed push, a transient error: the run fails and the check stays red. It does not
+pass. The absence of a commit is treated as the agent having not yet spoken, which is exactly the
+state the gate exists to hold. This is the one place the bias toward firing has a cost, because a
+flaky invocation blocks a merge that may owe nothing, and the remedy is a re-run.</p>
+<p>If the branch moves while the agent is working, the commit lands on a tip it did not read. Decision
+8 is what contains this: because a second run is idempotent, re-running against the new tip either
+produces no diff or produces the delta the new commits imply. The agent does not attempt to merge,
+rebase or resolve anything.</p>
+<p>The design provides no bypass of its own. There is no flag meaning skip the gate this time, and no
+state in which the agent being broken counts as a reason to proceed. What does exist, as it does
+for every required check, is administrative override at the repository level. It is worth being
+plain about that rather than claiming a guarantee the platform does not give.</p>
+<p>The distinction that matters is between an override built into the gate and one that sits above
+it. An override inside the gate gets used, because it was designed to be used, and within a
+quarter it is part of the normal path. A platform-level override is attributable, lands in an
+audit log, and applies to every check in the repository rather than singling this one out as the
+skippable one. Live with the second. Never build the first.</p>
+<hr />
+<h2>Part 4: On merge</h2>
+<p>Once a human approves and the branch merges, a second pipeline runs. It is deliberately a separate
+pipeline with a separate switch, because publishing has side effects outside the repository and
+authoring does not.</p>
+<p><strong>Publish the collection.</strong> Push the committed tests to the API client's cloud workspace, keyed by
+a collection identifier pinned in pipeline configuration rather than looked up at runtime. The
+sync is create and update only. It never deletes. Environments, globals and stored secrets are
+not touched. A test publishing step with delete permission on a shared workspace is a step that
+will eventually destroy somebody's work.</p>
+<p><strong>Generate the test case workbook.</strong> The same source material produces a spreadsheet for whoever
+does the manual testing, with a row per scenario: the scenario name, the steps, the expected
+result, a link back to the story, and critically, a column stating whether that case is covered by
+an automated script or still needs a person.</p>
+<p>That column is the part teams tend not to build, and it is the one that makes the artifact worth
+having. A QA engineer handed a generated suite has no way of knowing where its edges are. Handed a
+list where fourteen rows say automated and three say manual, they know exactly what their job is
+on this story. The automation stops being an opaque thing that may or may not have them covered.</p>
+<p><strong>Attach it to the story.</strong> Post the workbook to the linked ticket, replacing any earlier copy,
+with a comment linking the build that produced it. The pipeline also keeps it as a build artifact.
+Ticket integration is write-only for attachments and comments. The agent never changes ticket
+state, and no automated step moves a story through a workflow.</p>
+<hr />
+<h2>Part 5: On deploy</h2>
+<p>The published tests run against the deployed API at every environment promotion, driven by the
+API client's command line runner, with per-environment values supplied from pipeline variable
+groups rather than from anything committed.</p>
+<p>A failure blocks the promotion. This is what makes the tests load-bearing rather than
+informational. Tests that report but cannot stop anything decay, because nothing breaks when they
+are wrong, so nobody fixes them.</p>
+<p>The full loop is: tests are authored while the change is still reviewable, published when it
+merges, and executed against the running service in the same cycle. A regression surfaces as a
+red release stage rather than as a support ticket three weeks later.</p>
+<p>That sentence describes the loop working, and it is worth being exact about what has to be true
+for it to hold. The behaviour has to have a test, the test has to carry an assertion that would
+actually fail, and the behaviour has to be observable in the environment the suite runs against.
+The gate guarantees the first of those. It does not guarantee the second or the third. A generated
+test can exist, be reviewed, be green, and be asserting nothing of consequence. Everything in this
+design is aimed at making that case visible to a reviewer rather than at making it impossible,
+because the only thing that catches a weak assertion is a person reading it.</p>
+<hr />
+<h2>Who decides what</h2>
+<p>The gate enforces existence. It does not assess quality. Nothing in this design approves anything.</p>
+<ul>
+<li>The <strong>guard</strong> decides whether tests are owed</li>
+<li>The <strong>agent</strong> proposes tests and must explain itself either way</li>
+<li>The <strong>reviewer</strong> reads the generated tests as a diff and accepts, comments, or rejects</li>
+<li><strong>QA</strong> runs the suite, works the manual column of the workbook, and signs off</li>
+<li>The <strong>release gate</strong> blocks promotion on failure</li>
+</ul>
+<p>Reviewer and QA are roles here, not necessarily two people. On a team with embedded QA they are
+usually the same person, and the two entries describe two moments rather than two headcount. What
+matters is that someone with test judgement reads the generated assertions before the merge, and
+that whoever owns the manual column knows the automated column was reviewed and not just
+generated. If the code reviewer is approving test diffs they do not feel qualified to assess, the
+design has moved the problem rather than solved it.</p>
+<p>A wrong assertion in a generated test becomes a review comment on an open pull request. That is
+the cheapest place in the entire lifecycle for a wrong assertion to be found, and it is the reason
+this is worth doing at PR time specifically rather than anywhere else.</p>
+<hr />
+<h2>What it deliberately does not do</h2>
+<ul>
+<li>It does not approve, merge, or release anything</li>
+<li>It does not change ticket state</li>
+<li>It does not delete from the shared collection, and does not touch environments or secrets</li>
+<li>It does not execute tests during authoring</li>
+<li>It does not assert on behaviour that is not observable over HTTP</li>
+<li>It does not read or move production data</li>
+<li>It does not run any model on your infrastructure. One authenticated outbound call per pull
+  request, then polling the branch for a commit. No GPU, no model weights, no inference service to
+  operate</li>
+</ul>
+<p>That last point tends to matter more in review than the engineering does. There is no
+model-serving infrastructure to stand up, so the proposal is evaluated on whether the idea is
+sound rather than on what it costs to run. The costs that remain are the ordinary ones: API usage,
+pipeline minutes, a service identity to own the credentials, and somebody maintaining it.</p>
+<hr />
+<h2>Estimating the payback</h2>
+<p>Resist the single headline hours-saved number. It invites the one question it cannot survive,
+which is where the figure came from. The effects are on three different axes and only one of them
+is denominated in hours.</p>
+<p>Define:</p>
+<ul>
+<li><code>E</code> = endpoint-affecting pull requests per month</li>
+<li><code>h</code> = engineer-hours to author tests for one such change by hand</li>
+<li><code>v</code> = engineer-hours to review a generated set instead</li>
+<li><code>s</code> = share of those changes that currently receive no tests at all</li>
+</ul>
+<p><strong>Axis 1, time recovered.</strong> On the changes that were already being tested:</p>
+<pre><code>hours_per_year = E x (1 - s) x (h - v) x 12
+</code></pre>
+<p><strong>Axis 2, coverage created.</strong> On the changes that were being skipped:</p>
+<pre><code>newly_covered_changes_per_year = E x s x 12
+</code></pre>
+<p>Do not convert this to hours. Nobody was spending hours there. The gain is that behaviour which
+previously shipped untested now ships tested, which is a risk reduction, and dressing it up as
+labour saved is where these estimates lose credibility.</p>
+<p><strong>Axis 3, latency.</strong> Time from merge to tests existing falls from days or weeks to minutes, and
+crucially to before the merge rather than after it. Report it as a distribution, not a mean.</p>
+<p>A worked example with illustrative inputs, not measurements. At <code>E</code> = 20, <code>h</code> = 3.5, <code>v</code> = 0.5 and
+<code>s</code> = 0.4:</p>
+<table>
+<thead>
+<tr>
+<th>Axis</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time recovered</td>
+<td>20 x 0.6 x 3.0 x 12 = <strong>432 engineer-hours per year</strong></td>
+</tr>
+<tr>
+<td>Coverage created</td>
+<td>20 x 0.4 x 12 = <strong>96 changes per year</strong> now tested that were not</td>
+</tr>
+<tr>
+<td>Latency</td>
+<td>days after merge, to minutes before it</td>
+</tr>
+</tbody>
+</table>
+<p>The input worth testing is <code>v</code>, because it is the one you control least and the one most likely to
+be optimistic. At <code>v</code> = 0.5 the model returns 432 hours. At <code>v</code> = 1.5, which is what review costs
+once a reviewer is genuinely reading assertions rather than skimming a diff, it returns 288. At
+<code>v</code> = 2.5 it returns 144, and at <code>v</code> = 3.5 the design recovers nothing at all on this axis and is
+justified entirely by axes 2 and 3.</p>
+<p>That gradient is the finding, not any single row of it. Everything in this design that makes
+generated tests cheaper to review is load-bearing on the payback, which is why the file format is
+an architectural decision and not a preference.</p>
+<p>Against that, the running cost is one agent invocation per qualifying pull request, so <code>E x 12</code>
+invocations per year at whatever per-run cost your provider charges. For any plausible per-run
+price this is the smallest term in the model by two orders of magnitude, which is the actual
+finding. The cost question is not interesting. The review capacity question is.</p>
+<p>Publish your inputs next to your outputs and let readers substitute their own.</p>
+<hr />
+<h2>Prior art, and what is new here</h2>
+<p>Several pieces of this exist separately and it is worth being precise about which.</p>
+<p>Automated test generation from source is well established, from traditional tools through to
+LLM-based work such as Meta's TestGen-LLM. Generating tests on a pull request is a product
+category, including Qodo and similar. Deciding which tests a change implies is test impact
+analysis, which has existed for years. Keeping API collections in version control and running them
+from CI is standard practice supported by the major API clients directly.</p>
+<p>What I have not seen combined is this:</p>
+<ol>
+<li><strong>A guard that decides whether a change owes tests at all</strong>, using reachability rather than
+   only contract diffing, and biased toward firing</li>
+<li><strong>An explain-or-fail commit contract</strong>, where the absence of output is structurally impossible,
+   so a gate cannot pass through silence</li>
+<li><strong>Generated tests committed in a reviewable source format</strong>, chosen specifically so that the
+   human review step cannot quietly degrade</li>
+<li><strong>Authoring from the story and not only the diff</strong>, which is what catches rules that exist in
+   acceptance criteria and nowhere else</li>
+<li><strong>A coverage handoff artifact</strong>, the workbook column that tells a human which cases are still
+   theirs</li>
+</ol>
+<p>The second of those is the one I would defend, and it is worth being precise about what I am
+claiming. The underlying principle, that an automated decision should be observable including when
+the decision is to do nothing, is older than any of this and is not mine. What is mine is its
+application here: a test-authoring step that cannot terminate without leaving a reviewable artifact
+on the branch, so that "no tests were needed" becomes a statement a reviewer can disagree with
+rather than an absence nobody notices.</p>
+<p>That is the part I would defend, and it is not an AI idea. It is a gate design idea, and it
+applies to any automated step that is allowed to decide it has nothing to do.</p>
+<hr />
+<h2>Questions an adopter has to answer</h2>
+<p>Not loose ends in the design. Decisions that belong to whoever adopts it.</p>
+<p><strong>Agent access to source.</strong> An agent of this kind reads application code and ticket contents. That
+makes retention, training use, data residency and subprocessor terms a procurement question to
+settle before the first run, not after. Settle it in writing.</p>
+<p><strong>Credential ownership.</strong> The trigger credential and the ticket system credential must belong to a
+service identity owned by a team. If they are tied to one person's account, every gated repository
+depends on that person's continued access, and you have built a single point of failure into your
+merge process. This is an easy mistake to make while piloting and an expensive one to still have
+at scale.</p>
+<p><strong>Collection migration comes first.</strong> A repository cannot be switched on until its collection
+exists in version control. Enabling the gate against a collection that only lives in the cloud
+produces divergence immediately.</p>
+<p><strong>Pulling a cloud workspace locally is destructive.</strong> It retargets the workspace and brings
+environment files down with live values in them. Treat it as a privileged operation with a
+documented procedure.</p>
+<p><strong>Review capacity is the real constraint.</strong> The bottleneck moves. It was authoring. It becomes
+reviewing. If generated tests are approved without being read, this design has achieved nothing
+except a more convincing-looking repository, and the reviewable file format is necessary but not
+sufficient for preventing that.</p>
+<hr />
+<h2>The shortest version</h2>
+<p>Move test authoring to the moment the change is still under review. Let a machine decide whether
+tests are owed, and bias that decision toward yes. Let it write them in a format a person will
+actually read. Make it impossible for the step to say nothing. Then put a human in front of the
+result and keep them there.</p>
+<p>The checks arrive with the change.</p>
+</main>
+<footer>
+  <p>Sneha Pala. Design and implementation are my own work. The pattern is described
+  here technology-neutrally and deliberately contains no details of any employer's
+  systems, services or data.</p>
+  <p>Archived copy of record: <a href="https://doi.org/10.5281/zenodo.23777508">https://doi.org/10.5281/zenodo.23777508</a><br>
+  Licensed <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p>
+</footer>
+</div>
+</body>
+</html>
